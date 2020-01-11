@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <title>Title</title>
+  <link rel="stylesheet" href="https://stackpath.bootstrapcdn.com/bootstrap/4.4.1/css/bootstrap.min.css"
+        integrity="sha384-Vkoo8x4CGsO3+Hhxv8T/Q5PaXtkKtu6ug5TOeNV6gBiFeWPGFN9MuhOf23Q9Ifjh" crossorigin="anonymous">
+  <script src="../dist/table_builder.min.js"></script>
+</head>
+<body>
+<div class="container-fluid mt-5">
+  <div class="form-row">
+    <div class="col-2">
+      <input type="text" id="col-index" value="0" class="form-control" placeholder="Column by index">
+    </div>
+    <button class="btn btn-primary mb-4" id="col-add">Add</button>
+    <button class="btn btn-danger mb-4 ml-1" id="col-remove">Remove</button>
+  </div>
+</div>
+<script>
+
+  let tableAttribs = {
+    class: 'table table-sm table-bordered table-hover',
+    id: 'myFirstTable',
+    // border: 1
+  };
+
+  let headers = {
+    "Name": { key: 'name', width: 100 },
+    "Rank": { key: 'rank', width: 70 },
+    "Gender": { key: 'demographics.gender', width: 80 },
+    "Founded year": { key: 'company.founded', width: 200 },
+    "Relationship": { key: 'company.relationship', width: 140 },
+    "Company Sector": { key: 'company.sector', width: 140 },
+    "Citizenship": { key: 'location.citizenship', width: 180 },
+    "Wealth worth": { key: 'wealth.worth in billions', width: 140 },
+  };
+
+  let myTable = tableBuilder( tableAttribs )
+    .setHeader( headers );
+
+  fetch( './data.json' )
+    .then( response => response.json() )
+    .then( data => {
+      let myBucket = new Bucket( data );
+
+      myTable
+        .setBody( myBucket.limit( 100 ) )
+        .appendTo( 'body div.container-fluid' );
+      myTable.debugMode( true );
+      myTable
+        .on( 'company.founded', ( tr, data ) => {
+          fetch( `https://restcountries.eu/rest/v2/alpha/${ data[ 'location.country code' ] }` )
+            .then( response => response.json() )
+            .then( country => {
+              tr.innerText = data[ 'company.founded' ] + ' - ' + data[ 'location.country code' ];
+              if ( country.flag ) {
+                tr.innerHTML += ` <img src="${ country.flag }" width="20">`;
+              }
+            } );
+        } )
+        .on( 'wealth.worth in billions', ( tr, data ) => {
+          tr.style.textAlign = 'right';
+          tr.style.fontWeight = 'bold';
+          tr.innerText = data[ 'wealth.worth in billions' ] + ' B';
+        } )
+        .on( 'rank', tr => {
+          tr.style.textAlign = 'right';
+        } );
+    } );
+
+  function Bucket( data ) {
+    this.limit = count => data.splice( 0, count || 10 );
+  }
+
+  let colIndex = document.getElementById( 'col-index' );
+  let colAdd = document.getElementById( 'col-add' );
+  let colDel = document.getElementById( 'col-remove' );
+  colAdd.onclick = function () {
+    let myColumn = myTable.insertInto( 'bloody hell' ).setEmptyColumn( +colIndex.value || 0 );
+    console.log( myColumn );
+    let myHeader = myColumn.shift();
+    myHeader.innerText = 'New Column';
+    myHeader.setAttribute( 'data-key', 'newColumn' );
+    myColumn.forEach( ( td, i ) => {
+      td.setAttribute( 'data-key', 'newColumn' );
+      td.innerText = i;
+      td.style.backgroundColor = `rgba(100, 100, 100, 0.${ i % 10 })`;
+    } );
+  };
+
+  colDel.onclick = function () {
+    myTable.remove( 'my' ).column( +colIndex.value || 0 );
+  };
+
+  /*
+    myTable.copy(2);
+    myTable.paste(2);*/
+
+
+</script>
+</body>
+</html>

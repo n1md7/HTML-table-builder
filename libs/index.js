@@ -1,49 +1,24 @@
-/**
- * @param {Object|String} $attrs it can be either attribute labels or a query selector string
- *
- * @method {setHeader} sets Table header. Required method.
- *  @params {Object, Boolean} $names = null, $hidden = false
- *  It expects an Object list for each column
- *  ex: {{"Name text": {key: 'key1', width: 40}, ...}
- *  It will append all passed attributes as a key=value and main keyName will be displayed as a ColumnName
- *  If you want to hide header for some reason the second parameter should be True
- *  Setting the header params are important for later table functionality
- * @method {setBody} Sets Table body.
- *  @param {Object} $objList List of Objects
- * @method {appendTo} Appends an element to parent
- *  @param {string} querySelector
- * @method {done} After table creation has been done it triggers the callback function
- *  @param {function} $callback
- * @method {copy} Integer Copies column from parent table by index
- * @method {paste} Integer Pastes column on parent table by index
- * @method {remove} Removes either column or row
- * @method {insertInto} Inserts either cell or column or row
- * @method {on} Binds onCreate events by keys setting in setHeader {key: 'secondRow'}
- *  @param {function} callback which has one parameter which is current object of that element
- * @property object {get}
- *  @property object {asObject} returns the table object
- *  @property object {newColumn} returns the  last created column object
- *  @property object {newCell} returns the last created new cell object
- *  @property object {clipboard} returns a copied column
- *
- */
-const TableBuilder = ( ( Table, window ) => {
+const tableBuilder = ( function ( Table, window ) {
   if ( window && 'document' in window ) {
-    return $attrs => new Table( window.document, window, $attrs );
+    return $attrs => new Table( window.document, $attrs );
   }
-
-} )( function ( d, w, $attrs = null ) {
-  this.debug = false;
+} )( function ( document, $attrs = null ) {
+  let debug = false;
   let doneCallbacks = [];
-  let createMode = false,
-    newColumn = null,
-    newCell = null;
+  let createMode = false;
+  let newColumn = null;
+  let newCell = null;
+  let objectKeysBackup = [];
+  let headerNames = {};
+  let appendDone = false;
+  let cloned = {};
+  let orderKeys = [];
 
   if ( typeof $attrs === "string" ) {
-    this.table = d.querySelector( $attrs );
+    this.table = document.querySelector( $attrs );
   } else if ( $attrs !== null ) {
     createMode = true;
-    this.table = d.createElement( 'table' );
+    this.table = document.createElement( 'table' );
     this.headers = [];
     for ( let key in $attrs ) {
       if ( $attrs.hasOwnProperty( key ) ) {
@@ -52,7 +27,8 @@ const TableBuilder = ( ( Table, window ) => {
     }
   }
 
-  this.debugMode = mode => this.debug = mode;
+  // set debug mode to output warnings and logs
+  this.debugMode = mode => debug = mode;
 
   /*helper functions*/
   let is = {
@@ -75,13 +51,8 @@ const TableBuilder = ( ( Table, window ) => {
     }
   };
 
-  this.orderKeys = [];
-  let objectKeysBackup = [];
-  let headerNames = {};
-  /*
-      Sets headers as an array
-  */
-  this.setHeader = function ( $names = null, $hidden = false ) {
+  /* Sets headers as an array */
+  this.setHeader = ( $names = null, $hidden = false ) => {
     //$hidden is to hide header and just append body
     //header is important for order and validation
     if ( !createMode ) return;
@@ -89,15 +60,15 @@ const TableBuilder = ( ( Table, window ) => {
     if ( null !== $names ) {
       switch ( true ) {
         case typeof $names === "string":
-          // ex. "name,sname,table"
+          // ex. "name, last_name,table"
           this.headers = $names.split( ',' );
           break;
         case $names instanceof Array:
-          // ex. ["name", "sname", "table"]
+          // ex. ["name", "last_name", "table"]
           this.headers = $names;
           break;
         case typeof $names === 'object':
-          // ex. {name: {id:1, colspan:2}, sname: {colspan:3}}
+          // ex. {name: {id:1, colspan:2}, last_name: {colspan:3}}
           this.headers = Object.keys( $names );
           headerNames = $names;
           hasAttrs = true;
@@ -112,7 +83,7 @@ const TableBuilder = ( ( Table, window ) => {
 
       if ( hasAttrs ) {
         Object.entries( $names )
-          .forEach( function ( name ) {
+          .forEach( ( name ) => {
             if ( !$hidden ) {
               cell = row.insertCell( -1 );
               cell.innerHTML = name[ 0 ];
@@ -126,7 +97,7 @@ const TableBuilder = ( ( Table, window ) => {
                   //extract keys here
                   //it will be used for ordering the body table
                   if ( attr === 'key' ) {
-                    self.orderKeys.push( attrs[ attr ] );
+                    orderKeys.push( attrs[ attr ] );
                   }
                   if ( !$hidden ) {
                     cell.setAttribute( attr, attrs[ attr ] );
@@ -140,7 +111,7 @@ const TableBuilder = ( ( Table, window ) => {
           } );
       } else {
         this.headers
-          .forEach( function ( name ) {
+          .forEach( ( name ) => {
             if ( !$hidden ) {
               cell = row.insertCell( -1 );
               cell.innerHTML = name;
@@ -153,11 +124,11 @@ const TableBuilder = ( ( Table, window ) => {
     return this;
   };
 
-  this.setBody = function ( $objList = null, keys = [] ) {
+  this.setBody = ( $objList = null, keys = [] ) => {
     if ( !createMode ) return;
     if ( $objList !== null ) {
       $objList = Object.entries( $objList );
-      let body = this.table.appendChild( d.createElement( 'tbody' ) ), row, cell;
+      let body = this.table.appendChild( document.createElement( 'tbody' ) ), row, cell;
       for ( let $row = 0; $row < Object.keys( $objList ).length; $row++ ) {
         row = body.insertRow( -1 );
         //set default parameters
@@ -166,13 +137,13 @@ const TableBuilder = ( ( Table, window ) => {
         let dataValue = key => $objList[ $row ][ 1 ][ key ] || `data-${ key }='not found'`;
         keys.forEach( key => row.setAttribute( `data-${ key }`, dataValue( key ) ) );
 
-        for ( let _col = 0; _col < this.orderKeys.length; _col++ ) {
-          var innerHTML = null, dataKey = '', currRowData = '';
-          if ( Object.keys( $objList[ $row ][ 1 ] ).indexOf( this.orderKeys[ _col ] ) !== -1 ) {
-            innerHTML = $objList[ $row ][ 1 ][ this.orderKeys[ _col ] ];
+        for ( let _col = 0; _col < orderKeys.length; _col++ ) {
+          let innerHTML = null, dataKey = '', currRowData = '';
+          if ( Object.keys( $objList[ $row ][ 1 ] ).indexOf( orderKeys[ _col ] ) !== -1 ) {
+            innerHTML = $objList[ $row ][ 1 ][ orderKeys[ _col ] ];
             currRowData = $objList[ $row ][ 1 ];
           }
-          dataKey = this.orderKeys[ _col ];
+          dataKey = orderKeys[ _col ];
           cell = row.insertCell( -1 );
           cell.setAttribute( 'data-key', dataKey );
           cell.setAttribute(
@@ -194,26 +165,26 @@ const TableBuilder = ( ( Table, window ) => {
   };
 
 
-  this.on = function ( event, fnc ) {
-    if ( this.orderKeys.indexOf( event ) === -1 ) {
-      this.debug && console.warn( 'No such key "' + event + '" to trigger custom event' );
+  this.on = ( event, fnc ) => {
+    if ( orderKeys.indexOf( event ) === -1 ) {
+      debug && console.warn( 'No such key "' + event + '" to trigger custom event' );
 
       return this;
     }
 
-    objectKeysBackup.forEach( function ( cell ) {
+    objectKeysBackup.forEach( cell => {
       let $key = Object.keys( cell )[ 0 ];
       if ( $key === event ) {
         fnc.call( this, cell[ $key ], cell.data );
       }
-    }, this );
+    } );
 
     return this;
   };
 
   //insert column in specific index of the table
   //@where could be either body or head
-  this.insertInto = function ( where = 'body' ) {
+  this.insertInto = ( where = 'body' ) => {
     return {
       setCell: ( $column = null, $coordinates = null, $return ) => {
         //default is false
@@ -223,19 +194,19 @@ const TableBuilder = ( ( Table, window ) => {
 
             if ( !is.pattern.anArray( $coordinates, 2 ) ) {
               //$coordinates = [x, y] pair
-              var target = null;
+              let target = null;
               switch ( true ) {
                 case where === 'body':
-                  target = self.table.tBodies[ 0 ];
+                  target = this.table.tBodies[ 0 ];
                   break;
                 case where === 'head':
-                  target = self.table.tHead;
+                  target = this.table.tHead;
                   break;
                 default:
                   console.warn( 'Only "body" and "head" are allowed!' );
-                  return self;
+                  return this;
               }
-              var rows = target.rows, cell = {};
+              let rows = target.rows, cell = {};
               if ( undefined !== rows[ $coordinates[ 0 ] ] ) {
                 cell = rows[ $coordinates[ 0 ] ].insertCell( $coordinates[ 1 ] );
                 cell.setAttribute( 'data-key', $column[ 0 ] );
@@ -250,32 +221,32 @@ const TableBuilder = ( ( Table, window ) => {
                 return cell;
               }
             } else {
-              this.debug && console.warn( 'Expected exactly two elements of an Array! $coordinates = [x, y] pair' );
+              debug && console.warn( 'Expected exactly two elements of an Array! $coordinates = [x, y] pair' );
             }
           } else if ( $column.length === $coordinates.length ) {
-            for ( var col = 0; col < $column.length; col++ ) {
-              self.insertInto( "body" ).setCell( $column[ col ], $coordinates[ col ] );
+            for ( let col = 0; col < $column.length; col++ ) {
+              this.insertInto( "body" ).setCell( $column[ col ], $coordinates[ col ] );
             }
           }
         } else {
-          this.debug && console.warn( 'Expected an Array for @setColumn parameter! ex. ["key", "value"] or [["key", "value"],["key", "value"],["key", "value"]]' );
+          debug && console.warn( 'Expected an Array for @setColumn parameter! ex. ["key", "value"] or [["key", "value"],["key", "value"],["key", "value"]]' );
         }
 
-        return self;
+        return this;
       },
       setEmptyColumn: ( $index = 2 ) => {
         let column = [
-          self.insertInto( 'head' )
+          this.insertInto( 'head' )
             .setCell( [ '__loading__', '&nbsp;'.repeat( 20 ) ],
               [ 0, $index ],
               true
             )
         ];
         // minus 1 to exclude head tr
-        Array( self.table.rows.length - 1 ).fill( 0 )
-          .forEach( function ( e, i ) {
+        Array( this.table.rows.length - 1 ).fill( 0 )
+          .forEach( ( e, i ) => {
             column.push(
-              self.insertInto( 'body' )
+              this.insertInto( 'body' )
                 .setCell(
                   [ '__loading__', '&nbsp;'.repeat( 20 ) ],
                   [ i, $index ],
@@ -283,118 +254,105 @@ const TableBuilder = ( ( Table, window ) => {
                 )
             );
           } );
-
+        // for getter func
         newColumn = column;
 
-        return self;
+        return column;
       },
-      setRow: function ( $index = 1, callback = null) {
+      setRow: ( $index = 1, callback = null ) => {
 
-          var target = null;
-          switch ( true ) {
-            case where === 'body':
-              target = self.table.tBodies[ 0 ];
-              break;
-            case where === 'head':
-              target = self.table.tHead;
-              break;
-            default:
-              console.warn( 'Only "body" and "head" are allowed!' );
-              return self;
-          }
+        let target = null;
+        switch ( true ) {
+          case where === 'body':
+            target = this.table.tBodies[ 0 ];
+            break;
+          case where === 'head':
+            target = this.table.tHead;
+            break;
+          default:
+            debug && console.warn( 'Only "body" and "head" are allowed!' );
+            return this;
+        }
 
-          var row = target.insertRow( $index ), cells = [];
-          for ( var _col = 0; _col < self.orderKeys.length; _col++ ) {
-            var dataKey = '';
+        let row = target.insertRow( $index ), cells = [];
+        for ( let _col = 0; _col < orderKeys.length; _col++ ) {
+          let dataKey = '';
 
-            dataKey = self.orderKeys[ _col ];
+          dataKey = orderKeys[ _col ];
 
-            var cell = row.insertCell( -1 );
-            cell.setAttribute( 'data-key', dataKey );
+          let cell = row.insertCell( -1 );
+          cell.setAttribute( 'data-key', dataKey );
 
-            //save objects by key
-            // cells.push({[self.orderKeys[_col]]:cell});
-            cells.push( cell );
-          }
+          //save objects by key
+          // cells.push({[orderKeys[_col]]:cell});
+          cells.push( cell );
+        }
 
-          if ( null !== callback ) {
-            if ( "function" === typeof callback ) {
-              cells.forEach( function ( cell ) {
-                callback.call( self, cell );
-              } );
-            }
-          }
+        if ( null !== callback && "function" === typeof callback ) {
+          cells.forEach( cell => callback.call( this, cell ) );
+        }
 
-        return self;
+        return this;
       }
     };
   };
 
-  this.remove = function ( what ) {
-    what = undefined === what ? 'column' : what;
-
+  this.remove = ( what = 'column' ) => {
     return {
-      column: function ( $index ) {
-        $index = undefined === $index ? null : $index;
+      column: ( $index = null ) => {
 
         if ( null !== $index ) {
           if ( typeof $index === "number" ) {
-            Array( self.table.rows.length )
-              .fill( 1 ).forEach(
-              function ( e, i ) {
-                self.remove( 'cell' ).where( [ i, $index ] );
-              }
-            );
+            Array( this.table.rows.length )
+              .fill( 1 )
+              .forEach( ( e, i ) => this.remove( 'cell' ).where( [ i, $index ] ) );
           } else {
-            console.warn( "Expected number type!" );
+            debug && console.warn( "Expected number type!" );
           }
         }
 
-        return self;
+        return this;
       },
-      where: function ( $key ) {
-        $key = undefined === $key ? null : $key;
-
+      where: ( $key = null ) => {
         if ( $key instanceof Array ) {
-          var target = self.table;
+          let target = this.table;
           switch ( true ) {
             case what === 'row':
             case what === 'cell':
               break;
             default:
-              console.warn( 'Only "row" and "cell" are allowed!' );
-              return self;
+              debug && console.warn( 'Only "row" and "cell" are allowed!' );
+              return this;
           }
-          var rows = target.rows;
-          var tr = rows[ $key[ 0 ] ];
+          let rows = target.rows;
+          let tr = rows[ $key[ 0 ] ];
           if ( $key[ 0 ] instanceof Array ) {
-            $key.forEach( function ( key ) {
-              self.remove( what ).where( [ key ] );
-            } );
+            $key.forEach( key => this.remove( what ).where( [ key ] ) );
           } else if ( typeof $key[ 0 ] === "number" ) {
             if ( what === 'cell' ) {
               if ( tr.cells[ $key[ 1 ] ] !== undefined ) {
                 tr.deleteCell( $key[ 1 ] );
               } else {
-                self.debug && console.warn( 'Tried to remove an index that was out of scope. A cell [y,x] => [' + $key[ 0 ] + ',' + $key[ 1 ] + '] doesn\'t exist! Note: you need to pass [y,x] pairs' );
+                debug && console.warn( 'Tried to remove an index that was out of scope. A cell [y,x] => [' +
+                  $key[ 0 ] + ',' + $key[ 1 ] + '] doesn\'t exist! Note: you need to pass [y,x] pairs' );
               }
             } else {
               if ( typeof tr !== "undefined" ) {
                 target.deleteRow( $key[ 0 ] );
               } else {
-                self.debug && console.warn( 'Tried to remove an index that was out of scope. A row number ' + $key[ 0 ] + ' doesn\'t exist! Note you need to pass single element array [y]' );
+                debug && console.warn( 'Tried to remove an index that was out of scope. A row number ' +
+                  $key[ 0 ] + ' doesn\'t exist! Note you need to pass single element array [y]' );
               }
             }
           }
         }
 
-        return self;
+        return this;
       }
     };
   };
 
-  var appendDone = false;
-  this.done = function ( fns ) {
+  this.done = ( fns ) => {
     if ( typeof fns === "function" ) {
       if ( appendDone ) {
         fns.call( this.get.asObject );
@@ -406,36 +364,31 @@ const TableBuilder = ( ( Table, window ) => {
     return this;
   };
 
-  var self = this;
-  this.appendTo = function ( $selector ) {
+  this.appendTo = ( $selector ) => {
     if ( !createMode ) return;
     // cssSelector #id.class>div
     if ( typeof $selector === "string" ) {
-      d.querySelector( $selector ).appendChild( this.table );
+      document.querySelector( $selector ).appendChild( this.table );
     } else {
       $selector.appendChild( this.table );
     }
     appendDone = true;
-    doneCallbacks.forEach( function ( fn ) {
-      fn.call( this.get.asObject );
-    }, this );
+    doneCallbacks.forEach( fn => fn.call( this.get.asObject ) );
+
     return this;
   };
 
-  var cloned = {};
-  this.copy = function ( $cellIndex ) {
-    $cellIndex = undefined === $cellIndex ? 1 : $cellIndex;
-
-    var hRows = this.table.tHead.rows;
-    var bRows = this.table.tBodies[ 0 ].rows;
-    //reset var
+  this.copy = ( $cellIndex = 1 ) => {
+    let hRows = this.table.tHead.rows;
+    let bRows = this.table.tBodies[ 0 ].rows;
+    //reset vars
     cloned = { head: [], body: [] };
-    for ( var hRow in hRows ) {
+    for ( let hRow in hRows ) {
       if ( hRows.hasOwnProperty( hRow ) ) {
         cloned.head.push( hRows[ hRow ].cells[ $cellIndex ].cloneNode( true ) );
       }
     }
-    for ( var bRow in bRows ) {
+    for ( let bRow in bRows ) {
       if ( bRows.hasOwnProperty( bRow ) ) {
         cloned.body.push( bRows[ bRow ].cells[ $cellIndex ].cloneNode( true ) );
       }
@@ -444,23 +397,21 @@ const TableBuilder = ( ( Table, window ) => {
     return this;
   };
 
-  this.paste = function ( $cellIndex ) {
-    $cellIndex = undefined === $cellIndex ? 1 : $cellIndex;
-
+  this.paste = ( $cellIndex = 1 ) => {
     if ( typeof cloned.head === "undefined" ) {
-      self.debug && console.warn( 'You should copy first! Clipboard is empty.' );
+      debug && console.warn( 'You should copy first! Clipboard is empty.' );
       return this;
     }
-    var table = this.table;
-    var hRows = table.tHead.rows;
-    var bRows = table.tBodies[ 0 ].rows;
+    let table = this.table;
+    let hRows = table.tHead.rows;
+    let bRows = table.tBodies[ 0 ].rows;
 
-    for ( var hRow in hRows ) {
+    for ( let hRow in hRows ) {
       if ( hRows.hasOwnProperty( hRow ) ) {
         hRows[ hRow ].insertBefore( cloned.head[ hRow ], hRows[ hRow ].cells[ $cellIndex ] );
       }
     }
-    for ( var bRow in bRows ) {
+    for ( let bRow in bRows ) {
       if ( bRows.hasOwnProperty( bRow ) ) {
         bRows[ bRow ].insertBefore( cloned.body[ bRow ], bRows[ bRow ].cells[ $cellIndex ] );
       }
@@ -469,7 +420,7 @@ const TableBuilder = ( ( Table, window ) => {
     return this;
   };
 
-
+  let self = this;
   this.get = {
     get asObject() {
 
@@ -489,5 +440,6 @@ const TableBuilder = ( ( Table, window ) => {
     }
   };
 
-
 }, window );
+
+module.exports = tableBuilder;

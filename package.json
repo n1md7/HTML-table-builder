@@ -4,7 +4,7 @@
   "description": "Build HTML tables",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "minify": "browserify ./libs/index.js -o ./dist/table_builder.min.js --standalone=tableBuilder"
   },
   "repository": {
     "type": "git",
