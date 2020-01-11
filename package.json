@@ -1,8 +1,8 @@
 {
-  "name": "html-table-builder",
-  "version": "1.0.0",
+  "name": "@n1md7/html-table-builder",
+  "version": "1.0.2",
   "description": "Build HTML tables",
-  "main": "index.js",
+  "main": "./libs/index.js",
   "scripts": {
     "minify": "browserify ./libs/index.js -o ./dist/table_builder.min.js --standalone=tableBuilder"
   },

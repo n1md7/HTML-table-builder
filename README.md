@@ -1,8 +1,22 @@
 ### HTML table builder
 
+![builder](https://img.shields.io/badge/HTML--table-bulder-brightgreen)
+![npm-version](https://img.shields.io/npm/v/@n1md7/html-table-builder
+)
+
 ## Installation
 ```shell script
 npm install @n1md7/html-table-builder --save
+```
+or
+
+```shell script
+yarn add @n1md7/html-table-builder
+```
+
+or unpkg link 
+```html
+<script src="https://unpkg.com/@n1md7/html-table-builder@1.0.1/libs/index.js"></script>
 ```
 
 ### Demo
